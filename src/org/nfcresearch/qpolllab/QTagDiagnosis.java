@@ -10,6 +10,22 @@ package org.nfcresearch.qpolllab;
 public final class QTagDiagnosis {
     private QTagDiagnosis() {}
 
+    /**
+     * An NCI control header reserves only the low six OID bits (mask 0x3F).
+     * Some OEM extensions may use an out-of-band representation, so reject
+     * assumptions rather than guessing an alternative opcode.
+     */
+    public static boolean isStandardNciOid(int oid) {
+        return oid >= 0 && oid <= 0x3f;
+    }
+
+    public static String wireFormatWarning(int oid) {
+        if (isStandardNciOid(oid)) return "";
+        return "当前实验命令使用 OID=0x" + Integer.toHexString(oid).toUpperCase(java.util.Locale.ROOT)
+            + "，但 NCI 标准命令头 OID 只有 6 位（0x00–0x3F）。"
+            + "可能是接口用法或私有扩展封装有误；未核对本机 HAL 前禁止猜测替换为其他 OID。";
+    }
+
     public static boolean accepted(int status) {
         return status == 0;
     }
