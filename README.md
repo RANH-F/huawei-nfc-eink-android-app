@@ -21,6 +21,15 @@ Android 墨水屏刷新工具，原版 v2.9；此分支为 **v2.9.1 SN100U 诊�
 
 ## SN100U / vivo 的 QTag 失败诊断（v2.9.1）
 
+### 最新进展：优先核对 QTag 的 NCI 指令格式
+
+原版 `QPollWorker.qtag()` 调用 `sendVendorNciMessage(1, 15, 112, {0x31, action})`。其中 OID=112 即 `0x70`，但 AOSP 标准 NCI 命令头 OID 掩码为 `0x3F`。这是一条**确定的格式不一致线索**，尚无证据说明它必然导致 vivo 返回状态 3。为避免向真实 NFC 控制器发出未经验证的命令，目前不擅自修改 OID 或重试其它私有值；诊断版在日志中额外输出 `NCI_FORMAT` 警告。
+
+已添加可在 Windows PowerShell 下运行的只读设备信息收集器：`tools/collect-nxp-nfc-profile.ps1`。连接已授权 USB 调试设备，在含 adb 的终端执行 `powershell -ExecutionPolicy Bypass -File .\\tools\\collect-nxp-nfc-profile.ps1`，收集芯片配置、Android 版本、NFC 服务和 HAL 文件名，不收集完整 dumpsys / logcat，也不发厂商命令。人工检查生成的 txt 后再分享。
+
+**下一步设计**：先从具体 vivo ROM 的 NFC HAL 和 NCI 收发日志确定有效厂商入口，再考虑经过设备门控的 NXP 后端。对于 Q-Poll 成功后发生的 ISO-DEP 多协议重选，可借鉴 Ink NFC Lab 的阶段性诊断，但不能直接复制 ST54L 专用 Root/Frida 注入到 NXP。 
+
+
 此分支保留原有协议与原厂屏幕配置保护，**没有修改 FMSC 写图、认证和 D4 刷新逻辑**。已确认部分 vivo SN100U 系统调用 QTag 时返回 `API 状态=3`：
 
 - `QTAG_ON=0` 仅表示厂商请求被主机接受，不代表 RF 寻卡已经成功；仍需实际的 Q-Poll `0x71` 响应和标签回调。
