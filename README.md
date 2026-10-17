@@ -1,6 +1,6 @@
 # Huawei NFC E-Ink Android App
 
-Android 墨水屏刷新工具，当前版本 **v2.9**。通过 Shizuku 或 Root 调用兼容系统的 NXP Q-Poll，再通过 Android ISO-DEP 向相同原厂配置的 **552×768 四色墨水屏**传图刷新。
+Android 墨水屏刷新工具，原版 v2.9；此分支为 **v2.9.1 SN100U 诊断修复版**。通过 Shizuku 或 Root 调用兼容系统的 NXP Q-Poll，再通过 Android ISO-DEP 向相同原厂配置的 **552×768 四色墨水屏**传图刷新。
 
 ## 功能
 
@@ -18,6 +18,29 @@ Android 墨水屏刷新工具，当前版本 **v2.9**。通过 Shizuku 或 Root 
 4. 点击“发送当前预览到墨水屏”，核对图片和参数后确认。持续贴合并保持应用在前台，直到操作结束。
 
 仅适用于兼容 Q-Poll 的手机系统及相同原厂配置的目标屏；不能仅凭接口存在或型号名称判定兼容。刷新结果取决于实际供能与屏幕状态。中断可能留下不完整画面，程序不会自动重发刷新指令。
+
+## SN100U / vivo 的 QTag 失败诊断（v2.9.1）
+
+### 最新进展：优先核对 QTag 的 NCI 指令格式
+
+原版 `QPollWorker.qtag()` 调用 `sendVendorNciMessage(1, 15, 112, {0x31, action})`。其中 OID=112 即 `0x70`，但 AOSP 标准 NCI 命令头 OID 掩码为 `0x3F`。这是一条**确定的格式不一致线索**，尚无证据说明它必然导致 vivo 返回状态 3。为避免向真实 NFC 控制器发出未经验证的命令，目前不擅自修改 OID 或重试其它私有值；诊断版在日志中额外输出 `NCI_FORMAT` 警告。
+
+已添加可在 Windows PowerShell 下运行的只读设备信息收集器：`tools/collect-nxp-nfc-profile.ps1`。连接已授权 USB 调试设备，在含 adb 的终端执行 `powershell -ExecutionPolicy Bypass -File .\\tools\\collect-nxp-nfc-profile.ps1`，收集芯片配置、Android 版本、NFC 服务和 HAL 文件名，不收集完整 dumpsys / logcat，也不发厂商命令。人工检查生成的 txt 后再分享。
+
+**下一步设计**：先从具体 vivo ROM 的 NFC HAL 和 NCI 收发日志确定有效厂商入口，再考虑经过设备门控的 NXP 后端。对于 Q-Poll 成功后发生的 ISO-DEP 多协议重选，可借鉴 Ink NFC Lab 的阶段性诊断，但不能直接复制 ST54L 专用 Root/Frida 注入到 NXP。 
+
+
+此分支保留原有协议与原厂屏幕配置保护，**没有修改 FMSC 写图、认证和 D4 刷新逻辑**。已确认部分 vivo SN100U 系统调用 QTag 时返回 `API 状态=3`：
+
+- `QTAG_ON=0` 仅表示厂商请求被主机接受，不代表 RF 寻卡已经成功；仍需实际的 Q-Poll `0x71` 响应和标签回调。
+- `QTAG_ON=3 (FAILED)` 属于系统 **sendVendorNciMessage() 厂商命令执行失败**。代码在此停止，尚未开始寻卡，所以**不能据此判断线圈坏了或屏幕不兼容**。
+- `QTAG_DIAG` 会说明当前失败阶段和可能原因；`RECOVERY_ADVICE` 区分禁用 QTag 后的恢复不确定性。
+- 后端保留最初错误的退出码（例如 1），不再用后续 NFC 清理异常统一覆盖成退出码 2。
+- 本应用无法替代芯片厂商 HAL、修改手机 NFC 固件或强行让不支持 Q-Poll 的 ROM 获得该能力。不会自动尝试未经验证的底层厂商指令。
+
+**建议诊断顺序**：先检查 Shizuku 连接和 NFC 状态，运行「普通 NFC-A 对照」验证基础寻卡；再执行「测试 Q-Poll 能力」。若出现 `QTAG_ON=3`，无需反复贴近墨水屏，应保存日志并检查系统 NFC HAL。测试提示恢复未确认时，可关闭再打开系统 NFC；若仍异常则重启手机。
+
+GitHub Actions 会自动运行协议测试并构建 `QPollLab-2.9.1.apk`。产物是新生成的**调试签名**，不能保证覆盖安装原作者不同签名的 v2.9；请先备份需要的数据，必要时卸载原 APK 后再安装本分支的测试包。每次云端构建的调试证书也可能不同，不能作为长期正式签名。
 
 ## 构建与验证
 

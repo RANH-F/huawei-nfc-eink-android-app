@@ -1,0 +1,42 @@
+name: Android APK and protocol tests
+
+on:
+  push:
+    branches:
+      - main
+      - fix/**
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      # Ubuntu hosted runners provide Android SDK tools. Avoid the retired "tools" package.
+      - name: Install Android SDK packages
+        shell: bash
+        run: |
+          test -n "${ANDROID_HOME:-}" || { echo "ANDROID_HOME is missing"; exit 1; }
+          SDKMGR="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | head -n 1)"
+          test -n "$SDKMGR" || { echo "sdkmanager not found"; exit 1; }
+          "$SDKMGR" --install "platforms;android-34" "build-tools;34.0.0"
+      - name: Run Java protocol and NFC diagnosis tests
+        run: python3 tests/run_java.py
+      - name: Build signed debug APK and SHA256
+        run: python3 build.py
+      - name: Upload test APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: QPollLab-diagnostic-apk
+          path: |
+            dist/*.apk
+            dist/*.sha256
+          if-no-files-found: error
+          retention-days: 14

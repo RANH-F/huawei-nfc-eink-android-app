@@ -28,7 +28,7 @@ public final class QPollWorker {
     private static final AtomicBoolean stopping = new AtomicBoolean();
     private static final AtomicBoolean cleaned = new AtomicBoolean();
     private static final AtomicBoolean tagSeen = new AtomicBoolean();
-    private static volatile boolean readerTouched, qtagTouched, readerReleased, qtagDisabled;
+    private static volatile boolean readerTouched, qtagTouched, readerReleased, qtagDisabled, qtagEnabled;
     private static int discoveredCode, lostCode = -1;
     private static Process logcat;
     private static volatile Tag detectedTag;
@@ -151,7 +151,9 @@ public final class QPollWorker {
             try {
                 int status = qtag(0);
                 qtagDisabled = status == 0;
-                emit(status == 0 ? "QTAG_OFF" : "CLEANUP_ERROR", "关闭 QTag，API 状态=" + status);
+                emit(status == 0 ? "QTAG_OFF" : "CLEANUP_ERROR",
+                    "关闭 QTag，API 状态=" + status + " (" + QTagDiagnosis.statusLabel(status) + ")");
+                if (status != 0) emit("RECOVERY_ADVICE", QTagDiagnosis.cleanupFailure(qtagEnabled, status));
             } catch (Exception e) { emit("CLEANUP_ERROR", "关闭 QTag 失败：" + e); }
         }
         SystemClock.sleep(150);
@@ -175,6 +177,9 @@ public final class QPollWorker {
                 if (lock == null) throw new IllegalStateException("另一轮测试正在运行");
                 try {
                 init();
+                if (!"standard".equals(mode)) {
+                    emit("NCI_FORMAT", QTagDiagnosis.wireFormatWarning(112));
+                }
                 if (args[0].equals("inspect")) {
                     emit("CHIP",ChipInfo.inspect());
                     adapterType.getMethod("sendVendorNciMessage", int.class, int.class, int.class, byte[].class);
@@ -188,8 +193,14 @@ public final class QPollWorker {
                 if (args[0].equals("qtag")||panelOperation) {
                     qtagTouched = true;
                     int status = qtag(1);
-                    emit("QTAG_ON", "启用 QTag，API 状态=" + status + "（只是主机状态）");
-                    if (status != 0) throw new IllegalStateException("QTag 启用失败");
+                    emit("QTAG_ON", "启用 QTag，API 状态=" + status
+                        + " (" + QTagDiagnosis.statusLabel(status) + "；只是主机状态)");
+                    if (!QTagDiagnosis.accepted(status)) {
+                        emit("QTAG_DIAG", QTagDiagnosis.enableFailure(status));
+                        throw new IllegalStateException("QTag 启用失败：API 状态=" + status
+                            + " (" + QTagDiagnosis.statusLabel(status) + ")；未开始寻卡");
+                    }
+                    qtagEnabled = true;
                 }
                 readerTouched = true;
                 reader(0x81); // NFC-A + skip NDEF; the NXP extension rewrites discovery to Q_POLL.
@@ -218,7 +229,7 @@ public final class QPollWorker {
             if (readerTouched || qtagTouched) {
                 boolean ok = (!readerTouched || readerReleased) && (!qtagTouched || qtagDisabled);
                 emit(ok ? "RESTORED" : "RESTORE_FAILED", ok ? "已恢复普通寻卡" : "恢复未确认，请重启 NFC 开关后再试");
-                if (!ok) exit = 2;
+                exit = QTagDiagnosis.exitCode(exit, ok);
             }
             if (sessionStarted || exit != 0) emit("END", "本轮结束");
         }
