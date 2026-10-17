@@ -177,6 +177,9 @@ public final class QPollWorker {
                 if (lock == null) throw new IllegalStateException("另一轮测试正在运行");
                 try {
                 init();
+                if (!"standard".equals(mode)) {
+                    emit("NCI_FORMAT", QTagDiagnosis.wireFormatWarning(112));
+                }
                 if (args[0].equals("inspect")) {
                     emit("CHIP",ChipInfo.inspect());
                     adapterType.getMethod("sendVendorNciMessage", int.class, int.class, int.class, byte[].class);
