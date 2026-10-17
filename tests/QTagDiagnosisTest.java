@@ -6,6 +6,11 @@ public final class QTagDiagnosisTest {
     }
 
     public static void main(String[] args) {
+        check(QTagDiagnosis.isStandardNciOid(0));
+        check(QTagDiagnosis.isStandardNciOid(0x3f));
+        check(!QTagDiagnosis.isStandardNciOid(-1));
+        check(!QTagDiagnosis.isStandardNciOid(0x70));
+        check(QTagDiagnosis.wireFormatWarning(0x70).contains("6 位"));
         check(QTagDiagnosis.accepted(0));
         check(!QTagDiagnosis.accepted(1));
         check(!QTagDiagnosis.accepted(2));
